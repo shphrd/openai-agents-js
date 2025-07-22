@@ -1,5 +1,11 @@
 # @openai/agents-realtime
 
+## 0.0.13
+
+### Patch Changes
+
+- 9fdecdb: Expose configurable URL in OpenAIRealtimeWebSocket constructor and RealtimeSession.connect.
+
 ## 0.0.12
 
 ### Patch Changes
