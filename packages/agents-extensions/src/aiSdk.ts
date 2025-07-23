@@ -30,14 +30,12 @@ import { isZodObject } from '@openai/agents/utils';
 
 /**
  * @internal
- * Converts a list of model items to a list of language model v1 messages.
+ * Converts a list of model items to a list of language model v2 messages.
  *
- * @param model - The model to use.
  * @param items - The items to convert.
- * @returns The list of language model v1 messages.
+ * @returns The list of language model v2 messages.
  */
 export function itemsToLanguageV2Messages(
-  model: LanguageModelV2,
   items: protocol.ModelItem[],
 ): LanguageModelV2Message[] {
   const messages: LanguageModelV2Message[] = [];
@@ -405,7 +403,7 @@ export class AiSdkModel implements Model {
                   content: [{ type: 'text', text: request.input }],
                 },
               ]
-            : itemsToLanguageV2Messages(this.#model, request.input);
+            : itemsToLanguageV2Messages(request.input);
 
         if (request.systemInstructions) {
           input = [
@@ -595,7 +593,7 @@ export class AiSdkModel implements Model {
                 content: [{ type: 'text', text: request.input }],
               },
             ]
-          : itemsToLanguageV2Messages(this.#model, request.input);
+          : itemsToLanguageV2Messages(request.input);
 
       if (request.systemInstructions) {
         input = [
