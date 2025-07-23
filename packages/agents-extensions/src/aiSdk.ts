@@ -522,10 +522,13 @@ export class AiSdkModel implements Model {
         } as const;
 
         if (span && request.tracing === true) {
+          // Note: total_tokens removed due to OpenAI tracing API compatibility
+          // OpenAI API returns 400: "Unknown parameter: 'data[X].span_data.usage.total_tokens'"
+          // Value equals input_tokens + output_tokens if needed by consumers
           span.spanData.usage = {
             input_tokens: response.usage.inputTokens,
             output_tokens: response.usage.outputTokens,
-            total_tokens: response.usage.totalTokens,
+            // total_tokens: response.usage.totalTokens, // Restore if API supports
           };
         }
 
@@ -746,10 +749,13 @@ export class AiSdkModel implements Model {
 
       if (span && request.tracing === true) {
         span.spanData.output = outputs;
+        // Note: total_tokens removed due to OpenAI tracing API compatibility
+        // OpenAI API returns 400: "Unknown parameter: 'data[X].span_data.usage.total_tokens'"
+        // Value equals input_tokens + output_tokens if needed by consumers
         span.spanData.usage = {
           input_tokens: finalEvent.response.usage.inputTokens,
           output_tokens: finalEvent.response.usage.outputTokens,
-          total_tokens: finalEvent.response.usage.totalTokens,
+          // total_tokens: finalEvent.response.usage.totalTokens, // Restore if API supports
         };
       }
 
