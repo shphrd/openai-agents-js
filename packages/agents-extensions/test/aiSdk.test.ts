@@ -111,7 +111,7 @@ describe('itemsToLanguageV2Messages', () => {
       } as any,
     ];
 
-    const msgs = itemsToLanguageV2Messages(createMockModel(), items);
+    const msgs = itemsToLanguageV2Messages(items);
     expect(msgs).toEqual([
       {
         role: 'user',
@@ -183,7 +183,7 @@ describe('itemsToLanguageV2Messages', () => {
       } as any,
       { type: 'reasoning', content: [{ text: 'why' }] } as any,
     ];
-    const msgs = itemsToLanguageV2Messages(createMockModel(), items);
+    const msgs = itemsToLanguageV2Messages(items);
     expect(msgs).toEqual([
       {
         role: 'user',
@@ -241,9 +241,9 @@ describe('itemsToLanguageV2Messages', () => {
       } as any,
     ];
     expect(() =>
-      itemsToLanguageV2Messages(createMockModel(), items),
+      itemsToLanguageV2Messages(items),
     ).not.toThrow();
-    const msgs = itemsToLanguageV2Messages(createMockModel(), items);
+    const msgs = itemsToLanguageV2Messages(items);
     expect(msgs).toEqual([
       {
         role: 'user',
@@ -257,12 +257,12 @@ describe('itemsToLanguageV2Messages', () => {
     const bad: protocol.ModelItem[] = [
       { role: 'user', content: [{ type: 'bad' as any }] } as any,
     ];
-    expect(() => itemsToLanguageV2Messages(createMockModel(), bad)).toThrow(
+    expect(() => itemsToLanguageV2Messages(bad)).toThrow(
       UserError,
     );
 
     const unknown: protocol.ModelItem[] = [{ type: 'bogus' } as any];
-    expect(() => itemsToLanguageV2Messages(createMockModel(), unknown)).toThrow(
+    expect(() => itemsToLanguageV2Messages(unknown)).toThrow(
       UserError,
     );
   });
@@ -430,7 +430,7 @@ describe('AiSdkModel.getResponse', () => {
         type: 'function_call',
         callId: 'c1',
         name: 'foo',
-        arguments: {},
+        arguments: '{}',
         status: 'completed',
         providerData: { p: 1 },
       },
@@ -829,7 +829,7 @@ describe('AiSdkModel', () => {
         } as any),
       );
 
-      expect(receivedRequest.toolChoice).toBe('required');
+      expect(receivedRequest.toolChoice).toEqual({ type: 'required' });
     });
 
     test('converts specific tool name toolChoice', async () => {
