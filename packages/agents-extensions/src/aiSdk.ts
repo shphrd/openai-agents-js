@@ -181,7 +181,7 @@ export function itemsToLanguageV2Messages(
         messages.push(currentAssistantMessage);
         currentAssistantMessage = undefined;
       }
-      const toolResult: LanguageModelV1ToolResultPart = {
+      const toolResult: LanguageModelV2ToolResultPart = {
         type: 'tool-result',
         toolCallId: item.callId,
         toolName: item.name,
@@ -234,7 +234,7 @@ export function itemsToLanguageV2Messages(
     }
 
     if (item.type === 'unknown') {
-      messages.push({ ...(item.providerData ?? {}) } as LanguageModelV1Message);
+      messages.push({ ...(item.providerData ?? {}) } as LanguageModelV2Message);
       continue;
     }
 
@@ -297,7 +297,7 @@ export function toolToLanguageV2Tool(
       type: 'provider-defined',
       id: `${model.provider}.${tool.name}`,
       name: tool.name,
-      input: tool.providerData?.args ?? {},
+      args: tool.providerData?.args ?? {},
     };
   }
 
@@ -306,7 +306,7 @@ export function toolToLanguageV2Tool(
       type: 'provider-defined',
       id: `${model.provider}.${tool.name}`,
       name: tool.name,
-      input: {
+      args: {
         environment: tool.environment,
         display_width: tool.dimensions[0],
         display_height: tool.dimensions[1],
@@ -421,8 +421,7 @@ export class AiSdkModel implements Model {
           getResponseFormat(request.outputType);
 
         const aiSdkRequest: LanguageModelV2CallOptions = {
-          inputFormat: 'messages',
-          mode: {
+            mode: {
             type: 'regular',
             tools,
           },
@@ -575,7 +574,7 @@ export class AiSdkModel implements Model {
                 content: [{ type: 'text', text: request.input }],
               },
             ]
-          : itemsToLanguageV1Messages(this.#model, request.input);
+          : itemsToLanguageV2Messages(this.#model, request.input);
 
       if (request.systemInstructions) {
         input = [
@@ -588,22 +587,21 @@ export class AiSdkModel implements Model {
       }
 
       const tools = request.tools.map((tool) =>
-        toolToLanguageV1Tool(this.#model, tool),
+        toolToLanguageV2Tool(this.#model, tool),
       );
 
       request.handoffs.forEach((handoff) => {
-        tools.push(handoffToLanguageV1Tool(this.#model, handoff));
+        tools.push(handoffToLanguageV2Tool(this.#model, handoff));
       });
 
       if (span && request.tracing === true) {
         span.spanData.input = input;
       }
 
-      const responseFormat: LanguageModelV1CallOptions['responseFormat'] =
+      const responseFormat: LanguageModelV2CallOptions['responseFormat'] =
         getResponseFormat(request.outputType);
 
-      const aiSdkRequest: LanguageModelV1CallOptions = {
-        inputFormat: 'messages',
+      const aiSdkRequest: LanguageModelV2CallOptions = {
         mode: {
           type: 'regular',
           tools,
