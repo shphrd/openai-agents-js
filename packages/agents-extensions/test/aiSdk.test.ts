@@ -10,46 +10,46 @@ import { protocol, withTrace, UserError } from '@openai/agents';
 import { ReadableStream } from 'node:stream/web';
 import type { LanguageModelV2 } from '@ai-sdk/provider';
 import type { SerializedOutputType } from '@openai/agents';
+import { MockLanguageModelV2, simulateReadableStream } from 'ai/test';
 
-function stubModel(
-  partial: Partial<Pick<LanguageModelV2, 'doGenerate' | 'doStream'>>,
-): LanguageModelV2 {
-  return {
-    specificationVersion: 'v1',
-    provider: 'stub',
-    modelId: 'm',
-    defaultObjectGenerationMode: undefined,
-    async doGenerate(options) {
-      if (partial.doGenerate) {
-        return partial.doGenerate(options) as any;
-      }
-      return {
-        text: '',
-        finishReason: 'stop',
-        usage: { promptTokens: 0, completionTokens: 0 },
-        rawCall: { rawPrompt: '', rawSettings: {} },
-      } as any;
+function createMockModel(
+  config: {
+    doGenerate?:
+      | LanguageModelV2['doGenerate']
+      | Awaited<ReturnType<LanguageModelV2['doGenerate']>>;
+    doStream?:
+      | LanguageModelV2['doStream']
+      | Awaited<ReturnType<LanguageModelV2['doStream']>>;
+  } = {},
+): MockLanguageModelV2 {
+  return new MockLanguageModelV2({
+    provider: 'test',
+    modelId: 'test-model',
+    doGenerate: config.doGenerate || {
+      content: [{ type: 'text', text: '' }],
+      finishReason: 'stop',
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      rawCall: { rawPrompt: '', rawSettings: {} },
+      warnings: [],
     },
-    async doStream(options) {
-      if (partial.doStream) {
-        return partial.doStream(options);
-      }
-      return {
-        stream: new ReadableStream(),
-        rawCall: { rawPrompt: '', rawSettings: {} },
-      };
+    doStream: config.doStream || {
+      stream: new ReadableStream(),
+      rawCall: { rawPrompt: '', rawSettings: {} },
     },
-  } as LanguageModelV2;
+  });
 }
 
-function partsStream(parts: any[]): ReadableStream<any> {
-  return ReadableStream.from(
-    (async function* () {
-      for (const p of parts) {
-        yield p;
-      }
-    })(),
-  );
+// Use AI SDK v5 simulateReadableStream for better streaming tests
+function createStreamingMock(parts: any[]): MockLanguageModelV2 {
+  return createMockModel({
+    doStream: {
+      stream: simulateReadableStream({
+        chunks: parts,
+        chunkDelayInMs: 0, // No delay for tests
+      }),
+      rawCall: { rawPrompt: '', rawSettings: {} },
+    },
+  });
 }
 
 describe('getResponseFormat', () => {
@@ -106,12 +106,12 @@ describe('itemsToLanguageV2Messages', () => {
         type: 'function_call_result',
         callId: '1',
         name: 'foo',
-        output: { type: 'output_text', text: 'out' },
+        output: 'out',
         providerData: { b: 2 },
       } as any,
     ];
 
-    const msgs = itemsToLanguageV2Messages(stubModel({}), items);
+    const msgs = itemsToLanguageV2Messages(createMockModel(), items);
     expect(msgs).toEqual([
       {
         role: 'user',
@@ -119,10 +119,10 @@ describe('itemsToLanguageV2Messages', () => {
           {
             type: 'text',
             text: 'hi',
-            providerMetadata: { test: { cacheControl: { type: 'ephemeral' } } },
+            providerOptions: { test: { cacheControl: { type: 'ephemeral' } } },
           },
         ],
-        providerMetadata: {},
+        providerOptions: {},
       },
       {
         role: 'assistant',
@@ -131,11 +131,11 @@ describe('itemsToLanguageV2Messages', () => {
             type: 'tool-call',
             toolCallId: '1',
             toolName: 'foo',
-            args: {},
-            providerMetadata: { a: 1 },
+            input: {},
+            providerOptions: { a: 1 },
           },
         ],
-        providerMetadata: { a: 1 },
+        providerOptions: { a: 1 },
       },
       {
         role: 'tool',
@@ -144,11 +144,11 @@ describe('itemsToLanguageV2Messages', () => {
             type: 'tool-result',
             toolCallId: '1',
             toolName: 'foo',
-            result: { type: 'output_text', text: 'out' },
-            providerMetadata: { b: 2 },
+            output: { type: 'text', value: 'out' },
+            providerOptions: { b: 2 },
           },
         ],
-        providerMetadata: { b: 2 },
+        providerOptions: { b: 2 },
       },
     ]);
   });
@@ -157,7 +157,7 @@ describe('itemsToLanguageV2Messages', () => {
     const items: protocol.ModelItem[] = [
       { type: 'hosted_tool_call', name: 'search' } as any,
     ];
-    expect(() => itemsToLanguageV2Messages(stubModel({}), items)).toThrow();
+    expect(() => itemsToLanguageV2Messages(createMockModel(), items)).toThrow();
   });
 
   test('converts user images, function results and reasoning items', () => {
@@ -179,23 +179,24 @@ describe('itemsToLanguageV2Messages', () => {
         type: 'function_call_result',
         callId: '1',
         name: 'do',
-        output: { type: 'output_text', text: 'out' },
+        output: 'out',
       } as any,
       { type: 'reasoning', content: [{ text: 'why' }] } as any,
     ];
-    const msgs = itemsToLanguageV2Messages(stubModel({}), items);
+    const msgs = itemsToLanguageV2Messages(createMockModel(), items);
     expect(msgs).toEqual([
       {
         role: 'user',
         content: [
-          { type: 'text', text: 'hi', providerMetadata: {} },
+          { type: 'text', text: 'hi', providerOptions: {} },
           {
-            type: 'image',
-            image: new URL('http://x/img'),
-            providerMetadata: {},
+            type: 'file',
+            data: 'http://x/img',
+            mediaType: 'image/*',
+            providerOptions: {},
           },
         ],
-        providerMetadata: {},
+        providerOptions: {},
       },
       {
         role: 'assistant',
@@ -204,11 +205,11 @@ describe('itemsToLanguageV2Messages', () => {
             type: 'tool-call',
             toolCallId: '1',
             toolName: 'do',
-            args: {},
-            providerMetadata: {},
+            input: {},
+            providerOptions: {},
           },
         ],
-        providerMetadata: {},
+        providerOptions: {},
       },
       {
         role: 'tool',
@@ -217,16 +218,16 @@ describe('itemsToLanguageV2Messages', () => {
             type: 'tool-result',
             toolCallId: '1',
             toolName: 'do',
-            result: { type: 'output_text', text: 'out' },
-            providerMetadata: {},
+            output: { type: 'text', value: 'out' },
+            providerOptions: {},
           },
         ],
-        providerMetadata: {},
+        providerOptions: {},
       },
       {
         role: 'assistant',
-        content: [{ type: 'reasoning', text: 'why', providerMetadata: {} }],
-        providerMetadata: {},
+        content: [{ type: 'reasoning', text: 'why', providerOptions: {} }],
+        providerOptions: {},
       },
     ]);
   });
@@ -239,13 +240,15 @@ describe('itemsToLanguageV2Messages', () => {
         providerData: undefined,
       } as any,
     ];
-    expect(() => itemsToLanguageV2Messages(stubModel({}), items)).not.toThrow();
-    const msgs = itemsToLanguageV2Messages(stubModel({}), items);
+    expect(() =>
+      itemsToLanguageV2Messages(createMockModel(), items),
+    ).not.toThrow();
+    const msgs = itemsToLanguageV2Messages(createMockModel(), items);
     expect(msgs).toEqual([
       {
         role: 'user',
-        content: [{ type: 'text', text: 'hi', providerMetadata: {} }],
-        providerMetadata: {},
+        content: [{ type: 'text', text: 'hi', providerOptions: {} }],
+        providerOptions: {},
       },
     ]);
   });
@@ -254,19 +257,19 @@ describe('itemsToLanguageV2Messages', () => {
     const bad: protocol.ModelItem[] = [
       { role: 'user', content: [{ type: 'bad' as any }] } as any,
     ];
-    expect(() => itemsToLanguageV2Messages(stubModel({}), bad)).toThrow(
+    expect(() => itemsToLanguageV2Messages(createMockModel(), bad)).toThrow(
       UserError,
     );
 
     const unknown: protocol.ModelItem[] = [{ type: 'bogus' } as any];
-    expect(() => itemsToLanguageV2Messages(stubModel({}), unknown)).toThrow(
+    expect(() => itemsToLanguageV2Messages(createMockModel(), unknown)).toThrow(
       UserError,
     );
   });
 });
 
 describe('toolToLanguageV2Tool', () => {
-  const model = stubModel({});
+  const model = createMockModel();
   test('maps function tools', () => {
     const tool = {
       type: 'function',
@@ -278,7 +281,7 @@ describe('toolToLanguageV2Tool', () => {
       type: 'function',
       name: 'foo',
       description: 'd',
-      parameters: {},
+      inputSchema: {},
     });
   });
 
@@ -320,15 +323,14 @@ describe('toolToLanguageV2Tool', () => {
 describe('AiSdkModel.getResponse', () => {
   test('handles text output', async () => {
     const model = new AiSdkModel(
-      stubModel({
-        async doGenerate() {
-          return {
-            text: 'ok',
-            finishReason: 'stop',
-            usage: { promptTokens: 1, completionTokens: 2 },
-            providerMetadata: { p: 1 },
-            rawCall: { rawPrompt: '', rawSettings: {} },
-          } as any;
+      createMockModel({
+        doGenerate: {
+          content: [{ type: 'text', text: 'ok' }],
+          finishReason: 'stop',
+          usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+          providerMetadata: { p: 1 },
+          rawCall: { rawPrompt: '', rawSettings: {} },
+          warnings: [],
         },
       }),
     );
@@ -363,15 +365,14 @@ describe('AiSdkModel.getResponse', () => {
         throw new Error('aborted');
       }
       return {
-        text: 'should not',
+        content: [{ type: 'text', text: 'should not' }],
         finishReason: 'stop',
-        usage: { promptTokens: 0, completionTokens: 0 },
+        usage: { inputTokens: 0, outputTokens: 0 },
         rawCall: { rawPrompt: '', rawSettings: {} },
       };
     });
     const model = new AiSdkModel(
-      stubModel({
-        // @ts-expect-error don't care about the type error here
+      createMockModel({
         doGenerate,
       }),
     );
@@ -394,22 +395,21 @@ describe('AiSdkModel.getResponse', () => {
 
   test('handles function call output', async () => {
     const model = new AiSdkModel(
-      stubModel({
-        async doGenerate() {
-          return {
-            toolCalls: [
-              {
-                toolCallType: 'function',
-                toolCallId: 'c1',
-                toolName: 'foo',
-                args: {} as any,
-              },
-            ],
-            finishReason: 'stop',
-            usage: { promptTokens: 1, completionTokens: 2 },
-            providerMetadata: { p: 1 },
-            rawCall: { rawPrompt: '', rawSettings: {} },
-          } as any;
+      createMockModel({
+        doGenerate: {
+          content: [
+            {
+              type: 'tool-call',
+              toolCallId: 'c1',
+              toolName: 'foo',
+              input: {} as any,
+            },
+          ],
+          finishReason: 'stop',
+          usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+          providerMetadata: { p: 1 },
+          rawCall: { rawPrompt: '', rawSettings: {} },
+          warnings: [],
         },
       }),
     );
@@ -439,8 +439,8 @@ describe('AiSdkModel.getResponse', () => {
 
   test('propagates errors', async () => {
     const model = new AiSdkModel(
-      stubModel({
-        async doGenerate() {
+      createMockModel({
+        doGenerate: async () => {
           throw new Error('bad');
         },
       }),
@@ -463,15 +463,16 @@ describe('AiSdkModel.getResponse', () => {
   test('prepends system instructions to prompt for doGenerate', async () => {
     let received: any;
     const model = new AiSdkModel(
-      stubModel({
-        async doGenerate(options) {
+      createMockModel({
+        doGenerate: async (options) => {
           received = options.prompt;
           return {
-            text: '',
+            content: [{ type: 'text', text: '' }],
             finishReason: 'stop',
-            usage: { promptTokens: 0, completionTokens: 0 },
+            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
             providerMetadata: {},
             rawCall: { rawPrompt: '', rawSettings: {} },
+            warnings: [],
           };
         },
       }),
@@ -497,15 +498,18 @@ describe('AiSdkModel.getResponse', () => {
 
   test('handles NaN usage in doGenerate', async () => {
     const model = new AiSdkModel(
-      stubModel({
-        async doGenerate() {
-          return {
-            text: '',
-            finishReason: 'stop',
-            usage: { promptTokens: Number.NaN, completionTokens: Number.NaN },
-            providerMetadata: {},
-            rawCall: { rawPrompt: '', rawSettings: {} },
-          };
+      createMockModel({
+        doGenerate: {
+          content: [{ type: 'text', text: '' }],
+          finishReason: 'stop',
+          usage: {
+            inputTokens: Number.NaN,
+            outputTokens: Number.NaN,
+            totalTokens: Number.NaN,
+          },
+          providerMetadata: {},
+          rawCall: { rawPrompt: '', rawSettings: {} },
+          warnings: [],
         },
       }),
     );
@@ -535,38 +539,25 @@ describe('AiSdkModel.getResponse', () => {
 describe('AiSdkModel.getStreamedResponse', () => {
   test('streams events and completes', async () => {
     const parts = [
-      { type: 'text-delta', textDelta: 'a' },
+      { type: 'text-delta', delta: 'a' },
       {
-        type: 'tool-call',
-        toolCallType: 'function',
-        toolCallId: 'c1',
+        type: 'tool-input-start',
+        id: 'c1',
         toolName: 'foo',
-        args: '{"k":',
       },
       {
-        type: 'tool-call-delta',
-        toolCallType: 'function',
-        toolCallId: 'c1',
-        toolName: '',
-        argsTextDelta: '"v"}',
+        type: 'tool-input-delta',
+        id: 'c1',
+        delta: '{"k":"v"}',
       },
       { type: 'response-metadata', id: 'id1' },
       {
         type: 'finish',
         finishReason: 'stop',
-        usage: { promptTokens: 1, completionTokens: 2 },
+        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
       },
     ];
-    const model = new AiSdkModel(
-      stubModel({
-        async doStream() {
-          return {
-            stream: partsStream(parts),
-            rawCall: { rawPrompt: '', rawSettings: {} },
-          } as any;
-        },
-      }),
-    );
+    const model = new AiSdkModel(createStreamingMock(parts));
 
     const events: any[] = [];
     for await (const ev of model.getStreamedResponse({
@@ -602,16 +593,7 @@ describe('AiSdkModel.getStreamedResponse', () => {
   test('propagates stream errors', async () => {
     const err = new Error('bad');
     const parts = [{ type: 'error', error: err }];
-    const model = new AiSdkModel(
-      stubModel({
-        async doStream() {
-          return {
-            stream: partsStream(parts),
-            rawCall: { rawPrompt: '', rawSettings: {} },
-          } as any;
-        },
-      }),
-    );
+    const model = new AiSdkModel(createStreamingMock(parts));
 
     await expect(async () => {
       const iter = model.getStreamedResponse({
@@ -646,7 +628,7 @@ describe('AiSdkModel.getStreamedResponse', () => {
       } as any;
     });
     const model = new AiSdkModel(
-      stubModel({
+      createMockModel({
         doStream,
       }),
     );
@@ -671,13 +653,16 @@ describe('AiSdkModel.getStreamedResponse', () => {
   test('prepends system instructions to prompt for doStream', async () => {
     let received: any;
     const model = new AiSdkModel(
-      stubModel({
-        async doStream(options) {
+      createMockModel({
+        doStream: async (options) => {
           received = options.prompt;
           return {
-            stream: partsStream([]),
+            stream: simulateReadableStream({
+              chunks: [],
+              chunkDelayInMs: 0,
+            }),
             rawCall: { rawPrompt: '', rawSettings: {} },
-          } as any;
+          };
         },
       }),
     );
@@ -704,23 +689,14 @@ describe('AiSdkModel.getStreamedResponse', () => {
 
   test('handles NaN usage in stream finish event', async () => {
     const parts = [
-      { type: 'text-delta', textDelta: 'a' },
+      { type: 'text-delta', delta: 'a' },
       {
         type: 'finish',
         finishReason: 'stop',
-        usage: { promptTokens: Number.NaN, completionTokens: Number.NaN },
+        usage: { inputTokens: Number.NaN, outputTokens: Number.NaN },
       },
     ];
-    const model = new AiSdkModel(
-      stubModel({
-        async doStream() {
-          return {
-            stream: partsStream(parts),
-            rawCall: { rawPrompt: '', rawSettings: {} },
-          } as any;
-        },
-      }),
-    );
+    const model = new AiSdkModel(createStreamingMock(parts));
 
     let final: any;
     for await (const ev of model.getStreamedResponse({
@@ -756,10 +732,10 @@ describe('AiSdkModel', () => {
       doGenerate: vi.fn(async (opts: any) => {
         received = opts.prompt;
         return {
-          text: 'ok',
+          content: [{ type: 'text', text: 'ok' }],
           finishReason: 'stop',
-          usage: { promptTokens: 0, completionTokens: 0 },
-          providerMetadata: {},
+          usage: { inputTokens: 0, outputTokens: 0 },
+          providerOptions: {},
         };
       }),
     };
@@ -794,12 +770,12 @@ describe('AiSdkModel', () => {
             type: 'tool-call',
             toolCallId: 'call1',
             toolName: 'do',
-            args: {},
+            input: {},
 
-            providerMetadata: { meta: 1 },
+            providerOptions: { meta: 1 },
           },
         ],
-        providerMetadata: { meta: 1 },
+        providerOptions: { meta: 1 },
       },
     ]);
   });
@@ -820,6 +796,75 @@ describe('AiSdkModel', () => {
       expect(parseArguments('[1,2,3]')).toEqual([1, 2, 3]);
       expect(parseArguments('{"a":1}')).toEqual({ a: 1 });
       expect(parseArguments('{"a":1,"b":"c"}')).toEqual({ a: 1, b: 'c' });
+    });
+  });
+
+  describe('toolChoice support', () => {
+    test('passes toolChoice to AI SDK request', async () => {
+      let receivedRequest: any;
+      const model = new AiSdkModel(
+        createMockModel({
+          doGenerate: async (request) => {
+            receivedRequest = request;
+            return {
+              content: [{ type: 'text', text: 'ok' }],
+              finishReason: 'stop',
+              usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+              providerMetadata: {},
+              rawCall: { rawPrompt: '', rawSettings: {} },
+              warnings: [],
+            };
+          },
+        }),
+      );
+
+      await withTrace('t', () =>
+        model.getResponse({
+          input: 'hi',
+          tools: [],
+          handoffs: [],
+          modelSettings: { toolChoice: 'required' },
+          outputType: 'text',
+          tracing: false,
+        } as any),
+      );
+
+      expect(receivedRequest.toolChoice).toBe('required');
+    });
+
+    test('converts specific tool name toolChoice', async () => {
+      let receivedRequest: any;
+      const model = new AiSdkModel(
+        createMockModel({
+          doGenerate: async (request) => {
+            receivedRequest = request;
+            return {
+              content: [{ type: 'text', text: 'ok' }],
+              finishReason: 'stop',
+              usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+              providerMetadata: {},
+              rawCall: { rawPrompt: '', rawSettings: {} },
+              warnings: [],
+            };
+          },
+        }),
+      );
+
+      await withTrace('t', () =>
+        model.getResponse({
+          input: 'hi',
+          tools: [],
+          handoffs: [],
+          modelSettings: { toolChoice: 'weather' },
+          outputType: 'text',
+          tracing: false,
+        } as any),
+      );
+
+      expect(receivedRequest.toolChoice).toEqual({
+        type: 'tool',
+        toolName: 'weather',
+      });
     });
   });
 });
