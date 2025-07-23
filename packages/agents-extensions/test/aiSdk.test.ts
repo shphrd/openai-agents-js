@@ -2,18 +2,18 @@ import { describe, test, expect, vi } from 'vitest';
 import {
   AiSdkModel,
   getResponseFormat,
-  itemsToLanguageV1Messages,
+  itemsToLanguageV2Messages,
   parseArguments,
-  toolToLanguageV1Tool,
+  toolToLanguageV2Tool,
 } from '../src/aiSdk';
 import { protocol, withTrace, UserError } from '@openai/agents';
 import { ReadableStream } from 'node:stream/web';
-import type { LanguageModelV1 } from '@ai-sdk/provider';
+import type { LanguageModelV2 } from '@ai-sdk/provider';
 import type { SerializedOutputType } from '@openai/agents';
 
 function stubModel(
-  partial: Partial<Pick<LanguageModelV1, 'doGenerate' | 'doStream'>>,
-): LanguageModelV1 {
+  partial: Partial<Pick<LanguageModelV2, 'doGenerate' | 'doStream'>>,
+): LanguageModelV2 {
   return {
     specificationVersion: 'v1',
     provider: 'stub',
@@ -39,7 +39,7 @@ function stubModel(
         rawCall: { rawPrompt: '', rawSettings: {} },
       };
     },
-  } as LanguageModelV1;
+  } as LanguageModelV2;
 }
 
 function partsStream(parts: any[]): ReadableStream<any> {
@@ -82,7 +82,7 @@ describe('getResponseFormat', () => {
   });
 });
 
-describe('itemsToLanguageV1Messages', () => {
+describe('itemsToLanguageV2Messages', () => {
   test('converts user text and function call items', () => {
     const items: protocol.ModelItem[] = [
       {
@@ -111,7 +111,7 @@ describe('itemsToLanguageV1Messages', () => {
       } as any,
     ];
 
-    const msgs = itemsToLanguageV1Messages(stubModel({}), items);
+    const msgs = itemsToLanguageV2Messages(stubModel({}), items);
     expect(msgs).toEqual([
       {
         role: 'user',
@@ -157,7 +157,7 @@ describe('itemsToLanguageV1Messages', () => {
     const items: protocol.ModelItem[] = [
       { type: 'hosted_tool_call', name: 'search' } as any,
     ];
-    expect(() => itemsToLanguageV1Messages(stubModel({}), items)).toThrow();
+    expect(() => itemsToLanguageV2Messages(stubModel({}), items)).toThrow();
   });
 
   test('converts user images, function results and reasoning items', () => {
@@ -183,7 +183,7 @@ describe('itemsToLanguageV1Messages', () => {
       } as any,
       { type: 'reasoning', content: [{ text: 'why' }] } as any,
     ];
-    const msgs = itemsToLanguageV1Messages(stubModel({}), items);
+    const msgs = itemsToLanguageV2Messages(stubModel({}), items);
     expect(msgs).toEqual([
       {
         role: 'user',
@@ -239,8 +239,8 @@ describe('itemsToLanguageV1Messages', () => {
         providerData: undefined,
       } as any,
     ];
-    expect(() => itemsToLanguageV1Messages(stubModel({}), items)).not.toThrow();
-    const msgs = itemsToLanguageV1Messages(stubModel({}), items);
+    expect(() => itemsToLanguageV2Messages(stubModel({}), items)).not.toThrow();
+    const msgs = itemsToLanguageV2Messages(stubModel({}), items);
     expect(msgs).toEqual([
       {
         role: 'user',
@@ -254,18 +254,18 @@ describe('itemsToLanguageV1Messages', () => {
     const bad: protocol.ModelItem[] = [
       { role: 'user', content: [{ type: 'bad' as any }] } as any,
     ];
-    expect(() => itemsToLanguageV1Messages(stubModel({}), bad)).toThrow(
+    expect(() => itemsToLanguageV2Messages(stubModel({}), bad)).toThrow(
       UserError,
     );
 
     const unknown: protocol.ModelItem[] = [{ type: 'bogus' } as any];
-    expect(() => itemsToLanguageV1Messages(stubModel({}), unknown)).toThrow(
+    expect(() => itemsToLanguageV2Messages(stubModel({}), unknown)).toThrow(
       UserError,
     );
   });
 });
 
-describe('toolToLanguageV1Tool', () => {
+describe('toolToLanguageV2Tool', () => {
   const model = stubModel({});
   test('maps function tools', () => {
     const tool = {
@@ -274,7 +274,7 @@ describe('toolToLanguageV1Tool', () => {
       description: 'd',
       parameters: {} as any,
     } as any;
-    expect(toolToLanguageV1Tool(model, tool)).toEqual({
+    expect(toolToLanguageV2Tool(model, tool)).toEqual({
       type: 'function',
       name: 'foo',
       description: 'd',
@@ -288,7 +288,7 @@ describe('toolToLanguageV1Tool', () => {
       name: 'search',
       providerData: { args: { q: 1 } },
     } as any;
-    expect(toolToLanguageV1Tool(model, tool)).toEqual({
+    expect(toolToLanguageV2Tool(model, tool)).toEqual({
       type: 'provider-defined',
       id: `${model.provider}.search`,
       name: 'search',
@@ -303,7 +303,7 @@ describe('toolToLanguageV1Tool', () => {
       environment: 'env',
       dimensions: [2, 3],
     } as any;
-    expect(toolToLanguageV1Tool(model, tool)).toEqual({
+    expect(toolToLanguageV2Tool(model, tool)).toEqual({
       type: 'provider-defined',
       id: `${model.provider}.comp`,
       name: 'comp',
@@ -313,7 +313,7 @@ describe('toolToLanguageV1Tool', () => {
 
   test('throws on unknown type', () => {
     const tool = { type: 'x', name: 'u' } as any;
-    expect(() => toolToLanguageV1Tool(model, tool)).toThrow();
+    expect(() => toolToLanguageV2Tool(model, tool)).toThrow();
   });
 });
 

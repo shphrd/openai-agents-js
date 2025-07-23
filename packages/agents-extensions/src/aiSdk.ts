@@ -1,13 +1,13 @@
 import type {
   JSONSchema7,
-  LanguageModelV1,
-  LanguageModelV1CallOptions,
-  LanguageModelV1FunctionTool,
-  LanguageModelV1Message,
-  LanguageModelV1Prompt,
-  LanguageModelV1ProviderDefinedTool,
-  LanguageModelV1ToolCallPart,
-  LanguageModelV1ToolResultPart,
+  LanguageModelV2,
+  LanguageModelV2CallOptions,
+  LanguageModelV2FunctionTool,
+  LanguageModelV2Message,
+  LanguageModelV2Prompt,
+  LanguageModelV2ProviderDefinedTool,
+  LanguageModelV2ToolCallPart,
+  LanguageModelV2ToolResultPart,
 } from '@ai-sdk/provider';
 import {
   createGenerationSpan,
@@ -36,12 +36,12 @@ import { isZodObject } from '@openai/agents/utils';
  * @param items - The items to convert.
  * @returns The list of language model v1 messages.
  */
-export function itemsToLanguageV1Messages(
-  model: LanguageModelV1,
+export function itemsToLanguageV2Messages(
+  model: LanguageModelV2,
   items: protocol.ModelItem[],
-): LanguageModelV1Message[] {
-  const messages: LanguageModelV1Message[] = [];
-  let currentAssistantMessage: LanguageModelV1Message | undefined;
+): LanguageModelV2Message[] {
+  const messages: LanguageModelV2Message[] = [];
+  let currentAssistantMessage: LanguageModelV2Message | undefined;
 
   for (const item of items) {
     if (item.type === 'message' || typeof item.type === 'undefined') {
@@ -164,7 +164,7 @@ export function itemsToLanguageV1Messages(
         Array.isArray(currentAssistantMessage.content) &&
         currentAssistantMessage.role === 'assistant'
       ) {
-        const content: LanguageModelV1ToolCallPart = {
+        const content: LanguageModelV2ToolCallPart = {
           type: 'tool-call',
           toolCallId: item.callId,
           toolName: item.name,
@@ -260,10 +260,10 @@ export function itemsToLanguageV1Messages(
  * @param model - The model to use.
  * @param handoff - The handoff to convert.
  */
-function handoffToLanguageV1Tool(
-  model: LanguageModelV1,
+function handoffToLanguageV2Tool(
+  model: LanguageModelV2,
   handoff: SerializedHandoff,
-): LanguageModelV1FunctionTool {
+): LanguageModelV2FunctionTool {
   return {
     type: 'function',
     name: handoff.toolName,
@@ -279,10 +279,10 @@ function handoffToLanguageV1Tool(
  * @param model - The model to use.
  * @param tool - The tool to convert.
  */
-export function toolToLanguageV1Tool(
-  model: LanguageModelV1,
+export function toolToLanguageV2Tool(
+  model: LanguageModelV2,
   tool: SerializedTool,
-): LanguageModelV1FunctionTool | LanguageModelV1ProviderDefinedTool {
+): LanguageModelV2FunctionTool | LanguageModelV2ProviderDefinedTool {
   if (tool.type === 'function') {
     return {
       type: 'function',
@@ -327,7 +327,7 @@ export function toolToLanguageV1Tool(
  */
 export function getResponseFormat(
   outputType: SerializedOutputType,
-): LanguageModelV1CallOptions['responseFormat'] {
+): LanguageModelV2CallOptions['responseFormat'] {
   if (outputType === 'text') {
     return {
       type: 'text',
@@ -342,7 +342,7 @@ export function getResponseFormat(
 }
 
 /**
- * Wraps a model from the AI SDK that adheres to the LanguageModelV1 spec to be used used as a model
+ * Wraps a model from the AI SDK that adheres to the LanguageModelV2 spec to be used used as a model
  * in the OpenAI Agents SDK to use other models.
  *
  * While you can use this with the OpenAI models, it is recommended to use the default OpenAI model
@@ -366,9 +366,9 @@ export function getResponseFormat(
  * @returns The wrapped model.
  */
 export class AiSdkModel implements Model {
-  #model: LanguageModelV1;
+  #model: LanguageModelV2;
   #logger = getLogger('openai-agents:extensions:ai-sdk');
-  constructor(model: LanguageModelV1) {
+  constructor(model: LanguageModelV2) {
     this.#model = model;
   }
 
@@ -381,7 +381,7 @@ export class AiSdkModel implements Model {
           model_impl: 'ai-sdk',
         };
 
-        let input: LanguageModelV1Prompt =
+        let input: LanguageModelV2Prompt =
           typeof request.input === 'string'
             ? [
                 {
@@ -389,7 +389,7 @@ export class AiSdkModel implements Model {
                   content: [{ type: 'text', text: request.input }],
                 },
               ]
-            : itemsToLanguageV1Messages(this.#model, request.input);
+            : itemsToLanguageV2Messages(this.#model, request.input);
 
         if (request.systemInstructions) {
           input = [
@@ -402,11 +402,11 @@ export class AiSdkModel implements Model {
         }
 
         const tools = request.tools.map((tool) =>
-          toolToLanguageV1Tool(this.#model, tool),
+          toolToLanguageV2Tool(this.#model, tool),
         );
 
         request.handoffs.forEach((handoff) => {
-          tools.push(handoffToLanguageV1Tool(this.#model, handoff));
+          tools.push(handoffToLanguageV2Tool(this.#model, handoff));
         });
 
         if (span && request.tracing === true) {
@@ -417,10 +417,10 @@ export class AiSdkModel implements Model {
           throw new UserError('Zod output type is not yet supported');
         }
 
-        const responseFormat: LanguageModelV1CallOptions['responseFormat'] =
+        const responseFormat: LanguageModelV2CallOptions['responseFormat'] =
           getResponseFormat(request.outputType);
 
-        const aiSdkRequest: LanguageModelV1CallOptions = {
+        const aiSdkRequest: LanguageModelV2CallOptions = {
           inputFormat: 'messages',
           mode: {
             type: 'regular',
@@ -562,7 +562,7 @@ export class AiSdkModel implements Model {
         };
       }
 
-      let input: LanguageModelV1Prompt =
+      let input: LanguageModelV2Prompt =
         typeof request.input === 'string'
           ? [
               {
@@ -762,7 +762,7 @@ export class AiSdkModel implements Model {
 }
 
 /**
- * Wraps a model from the AI SDK that adheres to the LanguageModelV1 spec to be used used as a model
+ * Wraps a model from the AI SDK that adheres to the LanguageModelV2 spec to be used used as a model
  * in the OpenAI Agents SDK to use other models.
  *
  * While you can use this with the OpenAI models, it is recommended to use the default OpenAI model
@@ -785,7 +785,7 @@ export class AiSdkModel implements Model {
  * @param model - The Vercel AI SDK model to wrap.
  * @returns The wrapped model.
  */
-export function aisdk(model: LanguageModelV1) {
+export function aisdk(model: LanguageModelV2) {
   return new AiSdkModel(model);
 }
 
