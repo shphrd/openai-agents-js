@@ -434,6 +434,22 @@ export class AiSdkModel implements Model {
         const responseFormat: LanguageModelV2CallOptions['responseFormat'] =
           getResponseFormat(request.outputType);
 
+        // Handle toolChoice conversion
+        let toolChoice: LanguageModelV2CallOptions['toolChoice'] = undefined;
+        if (request.modelSettings.toolChoice) {
+          if (typeof request.modelSettings.toolChoice === 'string') {
+            if (request.modelSettings.toolChoice === 'required') {
+              toolChoice = { type: 'required' };
+            } else {
+              // Specific tool name
+              toolChoice = {
+                type: 'tool',
+                toolName: request.modelSettings.toolChoice,
+              };
+            }
+          }
+        }
+
         const aiSdkRequest: LanguageModelV2CallOptions = {
           tools,
           prompt: input,
@@ -444,6 +460,7 @@ export class AiSdkModel implements Model {
           maxOutputTokens: request.modelSettings.maxTokens,
           responseFormat,
           abortSignal: request.signal,
+          ...(toolChoice !== undefined && { toolChoice }),
 
           ...(request.modelSettings.providerData ?? {}),
         };
@@ -623,6 +640,22 @@ export class AiSdkModel implements Model {
       const responseFormat: LanguageModelV2CallOptions['responseFormat'] =
         getResponseFormat(request.outputType);
 
+      // Handle toolChoice conversion
+      let toolChoice: LanguageModelV2CallOptions['toolChoice'] = undefined;
+      if (request.modelSettings.toolChoice) {
+        if (typeof request.modelSettings.toolChoice === 'string') {
+          if (request.modelSettings.toolChoice === 'required') {
+            toolChoice = { type: 'required' };
+          } else {
+            // Specific tool name
+            toolChoice = {
+              type: 'tool',
+              toolName: request.modelSettings.toolChoice,
+            };
+          }
+        }
+      }
+
       const aiSdkRequest: LanguageModelV2CallOptions = {
         tools,
         prompt: input,
@@ -633,6 +666,7 @@ export class AiSdkModel implements Model {
         maxOutputTokens: request.modelSettings.maxTokens,
         responseFormat,
         abortSignal: request.signal,
+        ...(toolChoice !== undefined && { toolChoice }),
         ...(request.modelSettings.providerData ?? {}),
       };
 
