@@ -448,14 +448,18 @@ export class AiSdkModel implements Model {
 
         const output: ModelResponse['output'] = [];
 
-        result.toolCalls?.forEach((toolCall) => {
+        // Parse v2 content array to extract tool calls and text
+        const toolCalls = result.content.filter(item => item.type === 'tool-call');
+        const textContent = result.content.filter(item => item.type === 'text');
+        
+        toolCalls.forEach((toolCall) => {
           output.push({
             type: 'function_call',
             callId: toolCall.toolCallId,
             name: toolCall.toolName,
-            arguments: toolCall.input,
+            arguments: parseArguments(toolCall.input),
             status: 'completed',
-            providerData: !result.text ? result.providerOptions : undefined,
+            providerData: textContent.length === 0 ? result.providerMetadata : undefined,
           });
         });
 
@@ -463,13 +467,14 @@ export class AiSdkModel implements Model {
         // Putting a text message here will let the agent loop to complete,
         // so adding this item only when the tool calls are empty.
         // Note that the same support is not available for streaming mode.
-        if (!result.toolCalls && result.text) {
+        if (toolCalls.length === 0 && textContent.length > 0) {
+          const combinedText = textContent.map(t => t.text).join('');
           output.push({
             type: 'message',
-            content: [{ type: 'output_text', text: result.text }],
+            content: [{ type: 'output_text', text: combinedText }],
             role: 'assistant',
             status: 'completed',
-            providerData: result.providerOptions,
+            providerData: result.providerMetadata,
           });
         }
 
@@ -480,19 +485,19 @@ export class AiSdkModel implements Model {
         const response = {
           responseId: result.response?.id ?? 'FAKE_ID',
           usage: new Usage({
-            inputTokens: Number.isNaN(result.usage?.promptTokens)
+            inputTokens: Number.isNaN(result.usage?.inputTokens)
               ? 0
-              : (result.usage?.promptTokens ?? 0),
-            outputTokens: Number.isNaN(result.usage?.completionTokens)
+              : (result.usage?.inputTokens ?? 0),
+            outputTokens: Number.isNaN(result.usage?.outputTokens)
               ? 0
-              : (result.usage?.completionTokens ?? 0),
+              : (result.usage?.outputTokens ?? 0),
             totalTokens:
-              (Number.isNaN(result.usage?.promptTokens)
+              (Number.isNaN(result.usage?.inputTokens)
                 ? 0
-                : (result.usage?.promptTokens ?? 0)) +
-              (Number.isNaN(result.usage?.completionTokens)
+                : (result.usage?.inputTokens ?? 0)) +
+              (Number.isNaN(result.usage?.outputTokens)
                 ? 0
-                : (result.usage?.completionTokens ?? 0)),
+                : (result.usage?.outputTokens ?? 0)),
           }),
           output,
           providerData: result,
@@ -642,33 +647,24 @@ export class AiSdkModel implements Model {
             if (!textOutput) {
               textOutput = { type: 'output_text', text: '' };
             }
-            textOutput.text += part.textDelta;
-            yield { type: 'output_text_delta', delta: part.textDelta };
+            textOutput.text += part.delta;
+            yield { type: 'output_text_delta', delta: part.delta };
             break;
           }
-          case 'tool-call': {
-            if (part.toolCallType === 'function') {
-              functionCalls[part.toolCallId] = {
-                type: 'function_call',
-                callId: part.toolCallId,
-                name: part.toolName,
-                arguments: part.input,
-                status: 'completed',
-              };
-            }
+          case 'tool-input-start': {
+            functionCalls[part.id] = {
+              type: 'function_call',
+              callId: part.id,
+              name: part.toolName,
+              arguments: '',
+              status: 'completed',
+            };
             break;
           }
-          case 'tool-call-delta': {
-            if (part.toolCallType === 'function') {
-              const fc = functionCalls[part.toolCallId] ?? {
-                type: 'function_call',
-                callId: part.toolCallId,
-                name: '',
-                arguments: '',
-              };
-              fc.name += part.toolName;
-              fc.arguments += part.argsTextDelta;
-              functionCalls[part.toolCallId] = fc;
+          case 'tool-input-delta': {
+            const fc = functionCalls[part.id];
+            if (fc) {
+              fc.arguments += part.delta;
             }
             break;
           }
@@ -679,12 +675,12 @@ export class AiSdkModel implements Model {
             break;
           }
           case 'finish': {
-            usagePromptTokens = Number.isNaN(part.usage?.promptTokens)
+            usagePromptTokens = Number.isNaN(part.usage?.inputTokens)
               ? 0
-              : (part.usage?.promptTokens ?? 0);
-            usageCompletionTokens = Number.isNaN(part.usage?.completionTokens)
+              : (part.usage?.inputTokens ?? 0);
+            usageCompletionTokens = Number.isNaN(part.usage?.outputTokens)
               ? 0
-              : (part.usage?.completionTokens ?? 0);
+              : (part.usage?.outputTokens ?? 0);
             break;
           }
           case 'error': {
