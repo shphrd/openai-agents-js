@@ -185,15 +185,23 @@ export function itemsToLanguageV2Messages(
         type: 'tool-result',
         toolCallId: item.callId,
         toolName: item.name,
-        output: typeof item.output === 'string'
-          ? { type: 'text', value: item.output }
-          : Array.isArray(item.output)
-          ? { type: 'text', value: item.output.map(o => 
-              o.type === 'text' ? o.text : 
-              o.type === 'image' ? `[Image: ${o.mediaType}]` : 
-              String(o)
-            ).join('\n') }
-          : { type: 'text', value: String(item.output) },
+        output:
+          typeof item.output === 'string'
+            ? { type: 'text', value: item.output }
+            : Array.isArray(item.output)
+              ? {
+                  type: 'text',
+                  value: item.output
+                    .map((o) =>
+                      o.type === 'text'
+                        ? o.text
+                        : o.type === 'image'
+                          ? `[Image: ${o.mediaType}]`
+                          : String(o),
+                    )
+                    .join('\n'),
+                }
+              : { type: 'text', value: String(item.output) },
         providerOptions: {
           ...(item.providerData ?? {}),
         },
@@ -453,17 +461,25 @@ export class AiSdkModel implements Model {
         const output: ModelResponse['output'] = [];
 
         // Parse v2 content array to extract tool calls and text
-        const toolCalls = result.content.filter(item => item.type === 'tool-call');
-        const textContent = result.content.filter(item => item.type === 'text');
-        
+        const toolCalls = result.content.filter(
+          (item) => item.type === 'tool-call',
+        );
+        const textContent = result.content.filter(
+          (item) => item.type === 'text',
+        );
+
         toolCalls.forEach((toolCall) => {
           output.push({
             type: 'function_call',
             callId: toolCall.toolCallId,
             name: toolCall.toolName,
-            arguments: parseArguments(toolCall.input),
+            arguments:
+              typeof toolCall.input === 'string'
+                ? toolCall.input
+                : JSON.stringify(toolCall.input),
             status: 'completed',
-            providerData: textContent.length === 0 ? result.providerMetadata : undefined,
+            providerData:
+              textContent.length === 0 ? result.providerMetadata : undefined,
           });
         });
 
@@ -472,7 +488,7 @@ export class AiSdkModel implements Model {
         // so adding this item only when the tool calls are empty.
         // Note that the same support is not available for streaming mode.
         if (toolCalls.length === 0 && textContent.length > 0) {
-          const combinedText = textContent.map(t => t.text).join('');
+          const combinedText = textContent.map((t) => t.text).join('');
           output.push({
             type: 'message',
             content: [{ type: 'output_text', text: combinedText }],
@@ -666,6 +682,19 @@ export class AiSdkModel implements Model {
             if (fc) {
               fc.arguments += part.delta;
             }
+            break;
+          }
+          case 'tool-input-end': {
+            // Tool input streaming complete - arguments are finalized
+            const fc = functionCalls[part.id];
+            if (fc) {
+              // Arguments are already accumulated as JSON string, which is what agents framework expects
+              // No additional processing needed
+            }
+            break;
+          }
+          case 'stream-start': {
+            // Stream initialization - no action needed
             break;
           }
           case 'response-metadata': {
