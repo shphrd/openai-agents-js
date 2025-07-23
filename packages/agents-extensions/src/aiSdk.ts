@@ -77,8 +77,9 @@ export function itemsToLanguageV2Messages(
                   if (c.type === 'input_image') {
                     const url = new URL(c.image);
                     return {
-                      type: 'image',
-                      image: url,
+                      type: 'file',
+                      data: url.toString(),
+                      mediaType: 'image/*',
                       providerOptions: {
                         ...(contentProviderData ?? {}),
                       },
@@ -90,9 +91,8 @@ export function itemsToLanguageV2Messages(
                     }
                     return {
                       type: 'file',
-                      file: c.file,
-                      mimeType: 'application/octet-stream',
                       data: c.file,
+                      mediaType: 'application/octet-stream',
                       providerOptions: {
                         ...(contentProviderData ?? {}),
                       },
@@ -168,7 +168,7 @@ export function itemsToLanguageV2Messages(
           type: 'tool-call',
           toolCallId: item.callId,
           toolName: item.name,
-          args: parseArguments(item.arguments),
+          input: parseArguments(item.arguments),
           providerOptions: {
             ...(item.providerData ?? {}),
           },
@@ -185,7 +185,15 @@ export function itemsToLanguageV2Messages(
         type: 'tool-result',
         toolCallId: item.callId,
         toolName: item.name,
-        output: item.output,
+        output: typeof item.output === 'string'
+          ? { type: 'text', value: item.output }
+          : Array.isArray(item.output)
+          ? { type: 'text', value: item.output.map(o => 
+              o.type === 'text' ? o.text : 
+              o.type === 'image' ? `[Image: ${o.mediaType}]` : 
+              String(o)
+            ).join('\n') }
+          : { type: 'text', value: String(item.output) },
         providerOptions: {
           ...(item.providerData ?? {}),
         },
@@ -421,16 +429,13 @@ export class AiSdkModel implements Model {
           getResponseFormat(request.outputType);
 
         const aiSdkRequest: LanguageModelV2CallOptions = {
-            mode: {
-            type: 'regular',
-            tools,
-          },
+          tools,
           prompt: input,
           temperature: request.modelSettings.temperature,
           topP: request.modelSettings.topP,
           frequencyPenalty: request.modelSettings.frequencyPenalty,
           presencePenalty: request.modelSettings.presencePenalty,
-          maxTokens: request.modelSettings.maxTokens,
+          maxOutputTokens: request.modelSettings.maxTokens,
           responseFormat,
           abortSignal: request.signal,
 
@@ -602,16 +607,13 @@ export class AiSdkModel implements Model {
         getResponseFormat(request.outputType);
 
       const aiSdkRequest: LanguageModelV2CallOptions = {
-        mode: {
-          type: 'regular',
-          tools,
-        },
+        tools,
         prompt: input,
         temperature: request.modelSettings.temperature,
         topP: request.modelSettings.topP,
         frequencyPenalty: request.modelSettings.frequencyPenalty,
         presencePenalty: request.modelSettings.presencePenalty,
-        maxTokens: request.modelSettings.maxTokens,
+        maxOutputTokens: request.modelSettings.maxTokens,
         responseFormat,
         abortSignal: request.signal,
         ...(request.modelSettings.providerData ?? {}),
