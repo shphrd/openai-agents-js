@@ -50,7 +50,7 @@ export function itemsToLanguageV2Messages(
         messages.push({
           role: 'system',
           content: content,
-          providerMetadata: {
+          providerOptions: {
             ...(providerData ?? {}),
           },
         });
@@ -69,7 +69,7 @@ export function itemsToLanguageV2Messages(
                     return {
                       type: 'text',
                       text: c.text,
-                      providerMetadata: {
+                      providerOptions: {
                         ...(contentProviderData ?? {}),
                       },
                     };
@@ -79,7 +79,7 @@ export function itemsToLanguageV2Messages(
                     return {
                       type: 'image',
                       image: url,
-                      providerMetadata: {
+                      providerOptions: {
                         ...(contentProviderData ?? {}),
                       },
                     };
@@ -93,14 +93,14 @@ export function itemsToLanguageV2Messages(
                       file: c.file,
                       mimeType: 'application/octet-stream',
                       data: c.file,
-                      providerMetadata: {
+                      providerOptions: {
                         ...(contentProviderData ?? {}),
                       },
                     };
                   }
                   throw new UserError(`Unknown content type: ${c.type}`);
                 }),
-          providerMetadata: {
+          providerOptions: {
             ...(providerData ?? {}),
           },
         });
@@ -123,7 +123,7 @@ export function itemsToLanguageV2Messages(
                 return {
                   type: 'text',
                   text: c.text,
-                  providerMetadata: {
+                  providerOptions: {
                     ...(contentProviderData ?? {}),
                   },
                 };
@@ -132,7 +132,7 @@ export function itemsToLanguageV2Messages(
                 return {
                   type: 'text',
                   text: c.text,
-                  providerMetadata: {
+                  providerOptions: {
                     ...(contentProviderData ?? {}),
                   },
                 };
@@ -140,7 +140,7 @@ export function itemsToLanguageV2Messages(
               const exhaustiveCheck = c satisfies never;
               throw new UserError(`Unknown content type: ${exhaustiveCheck}`);
             }),
-          providerMetadata: {
+          providerOptions: {
             ...(providerData ?? {}),
           },
         });
@@ -154,7 +154,7 @@ export function itemsToLanguageV2Messages(
         currentAssistantMessage = {
           role: 'assistant',
           content: [],
-          providerMetadata: {
+          providerOptions: {
             ...(item.providerData ?? {}),
           },
         };
@@ -169,7 +169,7 @@ export function itemsToLanguageV2Messages(
           toolCallId: item.callId,
           toolName: item.name,
           args: parseArguments(item.arguments),
-          providerMetadata: {
+          providerOptions: {
             ...(item.providerData ?? {}),
           },
         };
@@ -185,15 +185,15 @@ export function itemsToLanguageV2Messages(
         type: 'tool-result',
         toolCallId: item.callId,
         toolName: item.name,
-        result: item.output,
-        providerMetadata: {
+        output: item.output,
+        providerOptions: {
           ...(item.providerData ?? {}),
         },
       };
       messages.push({
         role: 'tool',
         content: [toolResult],
-        providerMetadata: {
+        providerOptions: {
           ...(item.providerData ?? {}),
         },
       });
@@ -223,10 +223,10 @@ export function itemsToLanguageV2Messages(
           {
             type: 'reasoning',
             text: item.content[0].text,
-            providerMetadata: { ...(item.providerData ?? {}) },
+            providerOptions: { ...(item.providerData ?? {}) },
           },
         ],
-        providerMetadata: {
+        providerOptions: {
           ...(item.providerData ?? {}),
         },
       });
@@ -268,7 +268,7 @@ function handoffToLanguageV2Tool(
     type: 'function',
     name: handoff.toolName,
     description: handoff.toolDescription,
-    parameters: handoff.inputJsonSchema as JSONSchema7,
+    inputSchema: handoff.inputJsonSchema as JSONSchema7,
   };
 }
 
@@ -288,7 +288,7 @@ export function toolToLanguageV2Tool(
       type: 'function',
       name: tool.name,
       description: tool.description,
-      parameters: tool.parameters as JSONSchema7,
+      inputSchema: tool.parameters as JSONSchema7,
     };
   }
 
@@ -297,7 +297,7 @@ export function toolToLanguageV2Tool(
       type: 'provider-defined',
       id: `${model.provider}.${tool.name}`,
       name: tool.name,
-      args: tool.providerData?.args ?? {},
+      input: tool.providerData?.args ?? {},
     };
   }
 
@@ -306,7 +306,7 @@ export function toolToLanguageV2Tool(
       type: 'provider-defined',
       id: `${model.provider}.${tool.name}`,
       name: tool.name,
-      args: {
+      input: {
         environment: tool.environment,
         display_width: tool.dimensions[0],
         display_height: tool.dimensions[1],
@@ -453,9 +453,9 @@ export class AiSdkModel implements Model {
             type: 'function_call',
             callId: toolCall.toolCallId,
             name: toolCall.toolName,
-            arguments: toolCall.args,
+            arguments: toolCall.input,
             status: 'completed',
-            providerData: !result.text ? result.providerMetadata : undefined,
+            providerData: !result.text ? result.providerOptions : undefined,
           });
         });
 
@@ -469,7 +469,7 @@ export class AiSdkModel implements Model {
             content: [{ type: 'output_text', text: result.text }],
             role: 'assistant',
             status: 'completed',
-            providerData: result.providerMetadata,
+            providerData: result.providerOptions,
           });
         }
 
@@ -652,7 +652,7 @@ export class AiSdkModel implements Model {
                 type: 'function_call',
                 callId: part.toolCallId,
                 name: part.toolName,
-                arguments: part.args,
+                arguments: part.input,
                 status: 'completed',
               };
             }
